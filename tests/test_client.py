@@ -19,7 +19,9 @@ class TestWebhookClientInit:
         assert client.base_url == "http://localhost:8000"
 
     def test_sqs_mode_valid(self):
-        client = WebhookClient(mode="sqs", queue_url="https://sqs.eu-west-1.amazonaws.com/123/queue")
+        client = WebhookClient(
+            mode="sqs", queue_url="https://sqs.eu-west-1.amazonaws.com/123/queue"
+        )
         assert client.mode == "sqs"
         assert client.queue_url is not None
 

@@ -22,7 +22,9 @@ def _sign(secret: str, payload: str, timestamp: str | None = None) -> str:
 
 class TestWebhookSignature:
     SECRET = "whsec_test_secret_123"
-    PAYLOAD = json.dumps({"type": "payment_intent.succeeded", "data": {"object": {"id": "pi_1"}}})
+    PAYLOAD = json.dumps(
+        {"type": "payment_intent.succeeded", "data": {"object": {"id": "pi_1"}}}
+    )
 
     def test_valid_signature(self):
         header = _sign(self.SECRET, self.PAYLOAD)
@@ -31,7 +33,9 @@ class TestWebhookSignature:
 
     def test_valid_signature_bytes(self):
         header = _sign(self.SECRET, self.PAYLOAD)
-        result = WebhookSignature.verify(self.PAYLOAD.encode("utf-8"), header, self.SECRET)
+        result = WebhookSignature.verify(
+            self.PAYLOAD.encode("utf-8"), header, self.SECRET
+        )
         assert result["type"] == "payment_intent.succeeded"
 
     def test_invalid_signature_raises(self):

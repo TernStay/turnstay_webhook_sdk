@@ -140,7 +140,7 @@ class WebhookClient:
         except ImportError:
             raise WebhookClientError(
                 "boto3 is required for SQS mode. Install with: pip install boto3"
-            )
+            ) from None
         except Exception as e:
             raise WebhookClientError(f"Failed to send to SQS: {e}") from e
 

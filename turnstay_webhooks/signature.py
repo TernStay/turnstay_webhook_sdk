@@ -56,9 +56,7 @@ class WebhookSignature:
 
         expected = WebhookSignature._compute_signature(secret, timestamp, payload_str)
 
-        matched = any(
-            hmac.compare_digest(expected, sig) for sig in signatures
-        )
+        matched = any(hmac.compare_digest(expected, sig) for sig in signatures)
         if not matched:
             raise SignatureVerificationError("No matching signature found")
 

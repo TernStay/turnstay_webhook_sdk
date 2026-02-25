@@ -21,7 +21,10 @@ def _make_signed_payload(secret: str, payload_dict: dict) -> tuple[str, str]:
 
 class TestEventData:
     def test_from_dict_with_object(self):
-        raw = {"object": {"id": "pi_1", "amount": 100}, "previous_attributes": {"amount": 50}}
+        raw = {
+            "object": {"id": "pi_1", "amount": 100},
+            "previous_attributes": {"amount": 50},
+        }
         data = EventData.from_dict(raw)
         assert data.object["id"] == "pi_1"
         assert data.previous_attributes["amount"] == 50
@@ -83,6 +86,8 @@ class TestEvent:
         assert result["data"]["previous_attributes"]["status"] == "pending"
 
     def test_event_repr(self):
-        event = Event.from_dict({"id": "evt_1", "type": "payout.completed", "data": {"object": {}}})
+        event = Event.from_dict(
+            {"id": "evt_1", "type": "payout.completed", "data": {"object": {}}}
+        )
         assert "evt_1" in repr(event)
         assert "payout.completed" in repr(event)

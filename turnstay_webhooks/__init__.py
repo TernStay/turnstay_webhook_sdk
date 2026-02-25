@@ -1,12 +1,12 @@
 from .client import WebhookClient
-from .signature import WebhookSignature
-from .event import Event, EventData
 from .errors import (
-    WebhookError,
-    WebhookClientError,
     SignatureVerificationError,
     TimestampTooOldError,
+    WebhookClientError,
+    WebhookError,
 )
+from .event import Event, EventData
+from .signature import WebhookSignature
 
 __all__ = [
     "WebhookClient",
