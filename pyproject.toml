@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "turnstay_webhooks"
-version = "0.1.0"
+version = "0.1.1"
 description = "TurnStay Webhooks SDK – emit events, verify signatures, and consume webhook payloads"
 authors = ["Alon Stern <alon@turnstay.com>"]
 readme = "README.md"
@@ -18,7 +18,7 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.10"
-httpx = ">=0.25.0"
+httpx = ">=0.23.0"
 
 [tool.poetry.extras]
 sqs = ["boto3"]
