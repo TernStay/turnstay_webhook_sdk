@@ -1,0 +1,106 @@
+name: SDK CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python and Poetry
+        uses: ./.github/actions/setup-python-poetry
+        with:
+          python-version: '3.11'
+          working-directory: '.'
+
+      - name: Run static analysis
+        uses: ./.github/actions/static-analysis
+        with:
+          working-directory: '.'
+          use-ruff: 'true'
+          use-flake8: 'false'
+          skip-bandit: 'false'
+
+  test:
+    needs: static-analysis
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python and Poetry
+        uses: ./.github/actions/setup-python-poetry
+        with:
+          python-version: ${{ matrix.python-version }}
+          working-directory: '.'
+
+      - name: Run tests
+        shell: bash
+        working-directory: '.'
+        run: |
+          echo "🧪 Running tests for Python ${{ matrix.python-version }}..."
+          poetry run pytest tests/ -v --cov=turnstay_webhooks --cov-report=term-missing --cov-report=html
+          echo "📊 Coverage report generated. Check the HTML output in the artifacts or view in logs above."
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ matrix.python-version }}
+          path: htmlcov/
+          retention-days: 7
+
+  security:
+    needs: static-analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python and Poetry
+        uses: ./.github/actions/setup-python-poetry
+        with:
+          python-version: '3.11'
+          working-directory: '.'
+
+      - name: Run security scan with bandit
+        shell: bash
+        working-directory: '.'
+        run: |
+          echo "🔒 Running security scan..."
+          echo "Running bandit security analysis..."
+          poetry run bandit -r . -f txt || true
+          echo "Security scan completed. Check the logs above for detailed results."
+
+  publish:
+    needs: [static-analysis, test, security]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python and Poetry
+        uses: ./.github/actions/setup-python-poetry
+        with:
+          python-version: '3.11'
+          working-directory: '.'
+
+      - name: Publish to PyPI
+        uses: ./.github/actions/publish-pypi
+        with:
+          working-directory: '.'
+          aws-access-key-id: ${{ secrets.PYPI_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.PYPI_AWS_SECRET_ACCESS_KEY }}

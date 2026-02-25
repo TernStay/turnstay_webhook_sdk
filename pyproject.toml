@@ -1,83 +1,81 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[project]
+[tool.poetry]
 name = "turnstay_webhooks"
+version = "0.1.0"
 description = "TurnStay Webhooks SDK – emit events, verify signatures, and consume webhook payloads"
+authors = ["Alon Stern <alon@turnstay.com>"]
 readme = "README.md"
-requires-python = ">=3.10"
+packages = [{include = "turnstay_webhooks"}]
 license = "MIT"
 keywords = ["turnstay", "webhooks", "sdk", "payments"]
-authors = [
-  { name = "Alon Stern", email = "alon@turnstay.com" },
-]
 classifiers = [
-  "Development Status :: 4 - Beta",
-  "Programming Language :: Python",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: Implementation :: CPython",
-  "Programming Language :: Python :: Implementation :: PyPy",
-]
-dependencies = [
-  "httpx>=0.25.0",
-]
-dynamic = ["version"]
-
-[project.optional-dependencies]
-sqs = ["boto3>=1.28.0"]
-
-[project.urls]
-Documentation = "https://github.com/RubertoPaulo/turnstay_webhook_sdk#readme"
-Issues = "https://github.com/RubertoPaulo/turnstay_webhook_sdk/issues"
-Source = "https://github.com/RubertoPaulo/turnstay_webhook_sdk"
-
-[tool.hatch.version]
-path = "turnstay_webhooks/__about__.py"
-
-[tool.hatch.envs.default]
-dependencies = [
-  "httpx",
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
 ]
 
-[tool.hatch.envs.test]
-dependencies = [
-  "coverage[toml]",
-  "pytest",
-  "pytest-cov",
-  "pytest-asyncio",
-  "pytest-recording",
-]
-[tool.hatch.envs.test.scripts]
-run-coverage = "pytest --cov-config=pyproject.toml --cov=turnstay_webhooks --cov=tests"
-run = "run-coverage --no-cov"
+[tool.poetry.dependencies]
+python = "^3.10"
+httpx = ">=0.25.0"
 
-[tool.hatch.envs.default.scripts]
-cov = "pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=turnstay_webhooks --cov=tests {args}"
-no-cov = "cov --no-cov {args}"
+[tool.poetry.extras]
+sqs = ["boto3"]
 
-[[tool.hatch.envs.test.matrix]]
-python = ["310", "311"]
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.2"
+pytest-asyncio = "^0.20"
+pytest-cov = "^4.0"
+pytest-mock = "^3.10"
+coverage = "^7.0"
+ruff = "^0.11.0"
+bandit = "^1.8.0"
+pre-commit = "^3.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.coverage.run]
 branch = true
 parallel = true
 omit = [
-  "turnstay_webhooks/__about__.py",
+    "turnstay_webhooks/__about__.py",
 ]
 
 [tool.coverage.report]
 exclude_lines = [
-  "no cov",
-  "if __name__ == .__main__.:",
-  "if TYPE_CHECKING:",
+    "no cov",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "C4",
+    "UP",
+]
+ignore = [
+    "E501",
+    "B008",
+    "C901",
 ]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
-line-ending = "lf"
+skip-magic-trailing-comma = false
+line-ending = "auto"
 
 [tool.pytest.ini_options]
 addopts = "-v"
@@ -86,6 +84,3 @@ filterwarnings = []
 markers = ["pytest.mark.asyncio"]
 minversion = "6.0"
 testpaths = ["tests"]
-
-[tool.hatch.build.targets.wheel]
-packages = ["turnstay_webhooks"]

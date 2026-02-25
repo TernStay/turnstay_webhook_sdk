@@ -1,0 +1,72 @@
+name: 'Static Analysis'
+description: 'Run static analysis tools (ruff, tests, bandit)'
+inputs:
+  working-directory:
+    description: 'Working directory for the action'
+    required: false
+    default: '.'
+  use-ruff:
+    description: 'Whether to use ruff for linting'
+    required: false
+    default: 'true'
+  use-flake8:
+    description: 'Whether to use flake8 for linting'
+    required: false
+    default: 'false'
+  skip-bandit:
+    description: 'Whether to skip bandit security analysis'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run ruff lint
+      if: inputs.use-ruff == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "🔍 Running ruff lint..."
+        poetry run ruff check --output-format=github .
+
+    - name: Run ruff format check
+      if: inputs.use-ruff == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "🎨 Checking code formatting with ruff..."
+        poetry run ruff format --check .
+
+    - name: Run flake8
+      if: inputs.use-flake8 == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "🔍 Running flake8 lint..."
+        poetry run flake8 .
+
+    - name: Run tests
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "🧪 Running tests..."
+        poetry run pytest --verbose --tb=short
+
+    - name: Install bandit
+      if: inputs.skip-bandit != 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "📦 Installing bandit..."
+        poetry add --group=dev bandit
+
+    - name: Run bandit security analysis
+      if: inputs.skip-bandit != 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "🔒 Running bandit security analysis..."
+        echo "Running bandit with detailed output..."
+        poetry run bandit -r . -f txt || true
+        echo "Bandit security scan completed. Check the logs above for detailed results."
+

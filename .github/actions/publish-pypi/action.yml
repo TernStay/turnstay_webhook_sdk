@@ -1,0 +1,68 @@
+name: 'Publish to Private PyPI'
+description: 'Build and publish Python package to private PyPI server'
+inputs:
+  working-directory:
+    description: 'Working directory for the action'
+    required: false
+    default: '.'
+  aws-access-key-id:
+    description: 'AWS access key ID for authentication'
+    required: true
+  aws-secret-access-key:
+    description: 'AWS secret access key for authentication'
+    required: true
+  aws-region:
+    description: 'AWS region for CodeArtifact'
+    required: false
+    default: 'us-east-1'
+  domain:
+    description: 'CodeArtifact domain'
+    required: false
+    default: 'ternstay'
+  domain-owner:
+    description: 'CodeArtifact domain owner'
+    required: false
+    default: '697839196252'
+  repository:
+    description: 'CodeArtifact repository'
+    required: false
+    default: 'ternstay00'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ inputs.aws-access-key-id }}
+        aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
+        aws-region: ${{ inputs.aws-region }}
+
+    - name: Build package
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "🔨 Building package..."
+        poetry build
+
+    - name: Install twine
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "📦 Installing twine..."
+        python -m pip install --upgrade twine
+
+    - name: Configure CodeArtifact authentication
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "🔐 Configuring CodeArtifact authentication..."
+        aws codeartifact login --tool twine --domain ${{ inputs.domain }} --domain-owner ${{ inputs.domain-owner }} --repository ${{ inputs.repository }} --region ${{ inputs.aws-region }}
+
+    - name: Publish to CodeArtifact
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "🚀 Publishing to CodeArtifact..."
+        python -m twine upload --repository codeartifact dist/*
+
