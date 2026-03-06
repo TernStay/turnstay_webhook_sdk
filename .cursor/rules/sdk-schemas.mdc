@@ -1,0 +1,70 @@
+---
+name: sdk-schemas
+description: "Schema organization for SDK endpoints - Params, Response, Request"
+globs: ["**/schemas/**/*.py", "**/schemas/*.py"]
+---
+
+# SDK Schema Organization
+
+Each endpoint has three core schema types:
+
+| Type | Purpose |
+|------|---------|
+| **Params** / **GetParams** | Input (body for POST, query for GET) |
+| **Response** | Success response shape |
+| **Request** / **GetRequest** | Full request config (path, verb, response_type, params) |
+
+## Base Classes
+
+| Base Class | Location | Responsibility |
+|------------|----------|-----------------|
+| **BaseRequest** | `schemas/requests.py` | api_key, environment, path, verb, auth_headers(), url(), request_headers() |
+| **BaseParams** | `schemas/requests.py` | Serialization (e.g. Decimal → str) |
+| **BaseResponse** | `schemas/responses.py` | Empty base for response models |
+| **BaseResponseError** | `schemas/responses.py` | status, reason, errors |
+
+Endpoint-specific Requests override only what differs: `path`, `response_type`, `verb`, and optionally `url()` for custom base URLs.
+
+## POST Example
+
+```python
+class Params(BaseParams):
+    accounting_wallet_id: int
+    amount: int
+    bank_currency: str
+    provider_account_id: int
+
+class Response(BaseResponse):
+    id: int
+    account_amount: int
+    # ... nested models as needed
+
+class Request(BaseRequest):
+    params: Params
+    path: str = "accounting/payout"
+    response_type: type[Response] = Response
+    verb = VERB.POST
+```
+
+## GET Example
+
+```python
+class GetParams(BaseParams):
+    id: int  # or payment_intent_id, fx_transfer_id, etc.
+
+class Response(BaseResponse):
+    id: int
+    # ...
+
+class GetRequest(BaseRequest):
+    params: GetParams
+    path: str = "payout"
+    response_type: type[Response] = Response
+    verb = VERB.GET
+```
+
+## Keep Schemas Simple
+
+- Move shared logic into BaseRequest, BaseResponse, BaseParams
+- Endpoint-specific overrides go in the Request class
+- Goal: new endpoints require minimal boilerplate

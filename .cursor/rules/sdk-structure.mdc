@@ -1,0 +1,56 @@
+---
+name: sdk-structure
+description: "SDK project structure, scaffolding reference, versioning"
+globs: ["**/pyproject.toml", "**/__about__.py", "**/README.md"]
+---
+
+# SDK Project Structure
+
+Use [sdk_scaffolding](https://github.com/TernStay/sdk_scaffolding) as the starting point for new SDKs. The reference implementation is [turnstay_api_admin_sdk](https://github.com/TernStay/turnstay_api_admin_sdk).
+
+## Desired Layout
+
+```
+{sdk_name}/
+├── {sdk_name}/
+│   ├── client.py
+│   ├── client_utils.py
+│   ├── auth_utils.py      # optional, for complex auth
+│   ├── settings.py
+│   ├── __about__.py
+│   └── schemas/
+│       ├── requests.py
+│       ├── responses.py
+│       ├── types.py
+│       └── {endpoint}/
+│           └── {endpoint}.py
+├── tests/
+│   ├── test_client_*.py
+│   └── fixtures/
+├── run_sdk.py
+└── pyproject.toml
+```
+
+## Adding a New Endpoint
+
+1. Create schema module: Params/GetParams, Response, Request/GetRequest
+2. Add Client method: kwargs → Request → `execute(request)`
+3. Add to `run_sdk.py`
+4. Add to tests
+5. Do **not** add branching, retries, or custom logic to the Client method
+6. Mirror naming and structure of existing endpoints
+
+## Version Bump
+
+After modifying the SDK, bump the version in `pyproject.toml` or `__about__.py` (when using hatch dynamic version).
+
+## Quick Reference
+
+| Task | Action |
+|------|--------|
+| New endpoint | Schema (Params, Response, Request) → Client method → run_sdk.py → tests |
+| HTTP logic | Put in client_utils.py |
+| Auth helpers | Put in auth_utils.py if complex |
+| Client method | kwargs → Request → `execute(request)` only |
+| Tests | One file per method; fixtures + mocks |
+| Release | Bump version in pyproject.toml / __about__.py |

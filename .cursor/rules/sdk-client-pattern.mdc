@@ -1,0 +1,57 @@
+---
+name: sdk-client-pattern
+description: "Client class pattern for Python SDKs - thin methods, kwargs to Request to execute"
+globs: ["**/client.py"]
+---
+
+# SDK Client Class Pattern
+
+The Client is the main interface. Methods must be **simple and consistent**. All complexity lives in schemas and `client_utils`, not in the Client.
+
+## Pattern for Every Method
+
+```python
+async def endpoint_name(
+    self,
+    param1: type,
+    param2: type,
+) -> endpoint_schema.Response | BaseResponseError:
+    kwargs = {
+        "api_key": self.api_key,
+        "environment": self.environment,
+        "params": endpoint_schema.Params(
+            param1=param1,
+            param2=param2,
+        ),
+    }
+    request = endpoint_schema.Request(**kwargs)
+    return await execute(request)
+```
+
+## Rules
+
+- Client methods only: build kwargs, instantiate Request, call `execute(request)`
+- No HTTP logic, no response parsing, no branching in Client methods
+- Return type: `schema.Response | BaseResponseError`
+- For GET endpoints: use `GetParams` and `GetRequest` instead of `Params` and `Request`
+
+## Anti-patterns
+
+```python
+# Bad: HTTP logic in Client
+async def get_thing(self, id: int):
+    response = await self.session.get(f"{self.base_url}/thing/{id}")
+    return response.json()
+
+# Bad: Branching or retries in Client
+async def create_thing(self, ...):
+    try:
+        return await execute(request)
+    except Exception:
+        return await execute(request)  # retry logic
+
+# Good: Client delegates to execute
+async def get_thing(self, id: int):
+    request = thing_schema.GetRequest(api_key=self.api_key, params=thing_schema.GetParams(id=id))
+    return await execute(request)
+```

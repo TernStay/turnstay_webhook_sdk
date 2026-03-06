@@ -1,0 +1,41 @@
+---
+name: sdk-testing
+description: "Testing patterns for SDKs - one file per method, fixtures, run_sdk"
+globs: ["**/test_*.py", "**/run_sdk.py", "**/tests/**/*.py"]
+---
+
+# SDK Testing
+
+## Test Structure
+
+- **One test file per Client method**: `test_accounting_payout.py`, `test_get_payout.py`
+- **Related endpoints**: group under subdirs, e.g. `tests/payout/get_payout.py`, `tests/payout/create_payout.py`
+- **Fixtures**: `tests/fixtures/<endpoint>_fixtures.py` for raw success/failure dicts
+- **Mocks**: `tests/fixtures/mocks/<endpoint>_mocks.py` for monkeypatching `aiohttp.ClientSession`
+- Use `@pytest.mark.asyncio` for async tests
+- Test both success and error (e.g. 400) paths
+
+## run_sdk.py
+
+Every new endpoint must be added to `run_sdk.py`. This file lets users run a single Client method and inspect the result.
+
+```python
+async def run_<endpoint_name>():
+    client = Client(api_key=API_KEY, environment=ENVIRONMENT)
+    try:
+        response = await client.<method_name>(...)
+        print("---------------------------------------------------------------")
+        print("<Endpoint> Response:", response)
+        print("---------------------------------------------------------------")
+        return response
+    except Exception as e:
+        print("---------------------------------------------------------------")
+        print(f"<Endpoint> failed: {e}")
+        print("---------------------------------------------------------------")
+```
+
+Wire the new `run_*` function into `main()` so it can be executed when running the script.
+
+---
+
+**Note:** Common typo: `fixutres.py` should be `fixtures.py`.

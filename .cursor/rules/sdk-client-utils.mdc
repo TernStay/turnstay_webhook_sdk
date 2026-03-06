@@ -1,0 +1,29 @@
+---
+name: sdk-client-utils
+description: "client_utils.py and auth_utils.py responsibilities for SDK HTTP execution"
+globs: ["**/client_utils.py", "**/auth_utils.py"]
+---
+
+# SDK client_utils and auth_utils
+
+All code related to making API calls lives in `client_utils.py`, **not** in the Client.
+
+## client_utils.py
+
+| Function | Responsibility |
+|----------|-----------------|
+| **execute(request: BaseRequest)** | Main entry: builds URL, headers, payload, performs HTTP call, delegates to parse_response |
+| **parse_response(request, response)** | Handles 2xx vs error status, returns Response or BaseResponseError |
+| **wrap_response(response, response_type)** | Converts raw JSON to typed Response |
+| **remove_null(data)** | Recursively strips None/empty values for POST bodies |
+
+Client methods only call `execute(request)`.
+
+## auth_utils.py
+
+Use for **complex authentication only** (OAuth, token refresh, multiple auth schemes). Simple Bearer token auth can stay in `BaseRequest.auth_headers()`.
+
+## Rule
+
+- Do not add HTTP logic, retries, or custom parsing to the Client
+- All HTTP-related code belongs in client_utils or auth_utils
