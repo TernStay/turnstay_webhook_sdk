@@ -29,7 +29,7 @@ class Event:
         event = Event.construct_from(payload, signature, secret)
 
         match event.type:
-            case "payment_intent.succeeded":
+            case "merchant_of_record.payment_intent.succeeded":
                 pi = event.data.object
                 print(f"Payment {pi['id']} succeeded")
     """

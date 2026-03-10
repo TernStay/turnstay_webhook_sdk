@@ -17,7 +17,7 @@ class WebhookClient:
 
     Usage:
         client = WebhookClient(base_url="http://localhost:8000")
-        await client.trigger("payment_intent.succeeded", data={...})
+        await client.trigger("merchant_of_record.payment_intent.succeeded", data={...})
     """
 
     def __init__(
@@ -29,6 +29,7 @@ class WebhookClient:
         mode: str = "http",
         queue_url: str | None = None,
         region_name: str = "eu-west-1",
+        headers: dict[str, str] | None = None,
     ):
         """
         Args:
@@ -39,6 +40,7 @@ class WebhookClient:
             mode: Transport mode - "http" or "sqs".
             queue_url: SQS queue URL (required for SQS mode).
             region_name: AWS region for SQS.
+            headers: Optional default headers sent with every HTTP request.
         """
         self.mode = mode
         self.base_url = base_url
@@ -47,6 +49,7 @@ class WebhookClient:
         self.retry_delay = retry_delay
         self.queue_url = queue_url
         self.region_name = region_name
+        self.headers = headers or {}
         self._http_client: httpx.AsyncClient | None = None
 
         if mode == "http" and not base_url:
@@ -57,7 +60,9 @@ class WebhookClient:
     @property
     def http_client(self) -> httpx.AsyncClient:
         if self._http_client is None or self._http_client.is_closed:
-            self._http_client = httpx.AsyncClient(timeout=self.timeout)
+            self._http_client = httpx.AsyncClient(
+                timeout=self.timeout, headers=self.headers
+            )
         return self._http_client
 
     async def trigger(
@@ -65,13 +70,17 @@ class WebhookClient:
         event_type: str,
         data: dict[str, Any],
         name: str | None = None,
+        scope_id: str | None = None,
+        account_id: str | None = None,
     ) -> dict[str, Any] | None:
         """Emit a webhook event.
 
         Args:
-            event_type: The event type string (e.g., "payment_intent.succeeded").
+            event_type: The event type string (e.g., "merchant_of_record.payment_intent.succeeded").
             data: The event payload. Should follow the data.object pattern.
             name: Optional human-readable name for the event.
+            scope_id: Scope for the event (e.g., "merchant_of_record:{company_id}").
+            account_id: Account scope for the event.
 
         Returns:
             Response dict from the webhook-service (HTTP mode) or None (SQS mode).
@@ -82,11 +91,15 @@ class WebhookClient:
         if name is None:
             name = event_type
 
-        payload = {
+        payload: dict[str, Any] = {
             "event_type": event_type,
             "name": name,
             "data": data,
         }
+        if scope_id is not None:
+            payload["scope_id"] = str(scope_id)
+        if account_id is not None:
+            payload["account_id"] = str(account_id)
 
         if self.mode == "sqs":
             return await self._send_sqs(payload)
@@ -104,9 +117,12 @@ class WebhookClient:
                 last_error = WebhookClientError(
                     f"Server error {response.status_code}: {response.text}"
                 )
-            except httpx.TimeoutException as e:
-                last_error = e
-            except httpx.ConnectError as e:
+            except (
+                httpx.TimeoutException,
+                httpx.ConnectError,
+                httpx.RemoteProtocolError,
+                httpx.ReadError,
+            ) as e:
                 last_error = e
             except Exception as e:
                 raise WebhookClientError(f"Unexpected error: {e}") from e
