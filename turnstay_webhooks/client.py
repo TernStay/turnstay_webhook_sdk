@@ -56,7 +56,9 @@ class WebhookClient:
         if base_url:
             self.base_url = base_url.rstrip("/")
         elif environment and mode == "http":
-            self.base_url = f"https://webhook-service.{environment.lower()}.turnstay.com"
+            self.base_url = (
+                f"https://webhook-service.{environment.lower()}.turnstay.com"
+            )
         else:
             self.base_url = ""
         self.timeout = timeout
@@ -69,9 +71,7 @@ class WebhookClient:
         self._http_client: httpx.AsyncClient | None = None
 
         if mode == "http" and not self.base_url:
-            raise WebhookClientError(
-                "base_url or environment required for HTTP mode"
-            )
+            raise WebhookClientError("base_url or environment required for HTTP mode")
         if mode == "sqs" and not queue_url:
             raise WebhookClientError("queue_url is required for SQS mode")
 
