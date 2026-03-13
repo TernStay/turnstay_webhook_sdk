@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "turnstay_webhooks"
-version = "0.1.1"
+version = "0.1.2"
 description = "TurnStay Webhooks SDK – emit events, verify signatures, and consume webhook payloads"
 authors = ["Alon Stern <alon@turnstay.com>"]
 readme = "README.md"
