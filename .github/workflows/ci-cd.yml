@@ -56,7 +56,7 @@ jobs:
           echo "📊 Coverage report generated. Check the HTML output in the artifacts or view in logs above."
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report-${{ matrix.python-version }}
           path: htmlcov/
