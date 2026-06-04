@@ -1,9 +1,9 @@
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-# Poetry uses the "pip" YAML value per GitHub docs.
+# TurnStay standard: max 5 open PRs (3 app + 1 infra + 1 actions), Monday SAST, no auto-rebase.
 
 version: 2
 updates:
-  # ── Root SDK (Poetry: pyproject.toml + poetry.lock) ────────────
+  # ── Root (Poetry) ──
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -14,8 +14,8 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
-    open-pull-requests-limit: 5
-    rebase-strategy: "auto"
+    open-pull-requests-limit: 3
+    rebase-strategy: "disabled"
     allow:
       - dependency-type: "direct"
     groups:
@@ -27,7 +27,7 @@ updates:
       - "dependencies"
       - "python"
 
-  # ── GitHub Actions ─────────────────────────────────────────────
+  # ── GitHub Actions ──
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -38,7 +38,8 @@ updates:
     commit-message:
       prefix: "ci"
       include: "scope"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
+    rebase-strategy: "disabled"
     labels:
       - "dependencies"
       - "ci"
