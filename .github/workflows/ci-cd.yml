@@ -1,4 +1,12 @@
-name: SDK CI/CD Pipeline
+# =============================================================================
+# turnstay_webhook_sdk SDK CI/CD Pipeline
+# =============================================================================
+# Flow: static-analysis → test (3.10/3.11) + security → publish to CodeArtifact on main
+#
+# Configuration: PROJECT CONFIG env block below. Do not edit STANDARD PIPELINE.
+# =============================================================================
+
+name: 'turnstay_webhook_sdk SDK CI/CD Pipeline'
 
 on:
   push:
@@ -10,53 +18,75 @@ on:
 permissions:
   contents: read
 
+# =============================================================================
+# PROJECT CONFIG — edit only this section when onboarding a new package/service
+# =============================================================================
+env:
+  PACKAGE_DISPLAY_NAME: 'turnstay_webhook_sdk'
+  COVERAGE_PACKAGE: 'turnstay_webhooks'
+  PYTHON_VERSION: '3.11'
+  POETRY_VERSION: '1.8.3'
+  CHECKOUT_ACTION_VERSION: 'v6'
+  UPLOAD_ARTIFACT_VERSION: 'v4'
+  USE_RUFF: 'true'
+  USE_FLAKE8: 'false'
+  SKIP_BANDIT_IN_STATIC: 'false'
+
+# =============================================================================
+# STANDARD PIPELINE — do not edit per repo
+# =============================================================================
 jobs:
   static-analysis:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@${{ env.CHECKOUT_ACTION_VERSION }}
 
       - name: Setup Python and Poetry
         uses: ./.github/actions/setup-python-poetry
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
+          poetry-version: ${{ env.POETRY_VERSION }}
           working-directory: '.'
 
       - name: Run static analysis
         uses: ./.github/actions/static-analysis
         with:
           working-directory: '.'
-          use-ruff: 'true'
-          use-flake8: 'false'
-          skip-bandit: 'false'
+          use-ruff: ${{ env.USE_RUFF }}
+          use-flake8: ${{ env.USE_FLAKE8 }}
+          skip-bandit: ${{ env.SKIP_BANDIT_IN_STATIC }}
 
   test:
     needs: static-analysis
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11"]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@${{ env.CHECKOUT_ACTION_VERSION }}
 
       - name: Setup Python and Poetry
         uses: ./.github/actions/setup-python-poetry
         with:
           python-version: ${{ matrix.python-version }}
+          poetry-version: ${{ env.POETRY_VERSION }}
           working-directory: '.'
 
       - name: Run tests
         shell: bash
         working-directory: '.'
         run: |
-          echo "🧪 Running tests for Python ${{ matrix.python-version }}..."
-          poetry run pytest tests/ -v --cov=turnstay_webhooks --cov-report=term-missing --cov-report=html
-          echo "📊 Coverage report generated. Check the HTML output in the artifacts or view in logs above."
+          echo "Running tests for Python ${{ matrix.python-version }}..."
+          poetry run pytest tests/ -v \
+            --cov=${{ env.COVERAGE_PACKAGE }} \
+            --cov-report=term-missing \
+            --cov-report=html
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@${{ env.UPLOAD_ARTIFACT_VERSION }}
         with:
           name: coverage-report-${{ matrix.python-version }}
           path: htmlcov/
@@ -67,22 +97,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@${{ env.CHECKOUT_ACTION_VERSION }}
 
       - name: Setup Python and Poetry
         uses: ./.github/actions/setup-python-poetry
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
+          poetry-version: ${{ env.POETRY_VERSION }}
           working-directory: '.'
 
       - name: Run security scan with bandit
         shell: bash
         working-directory: '.'
         run: |
-          echo "🔒 Running security scan..."
-          echo "Running bandit security analysis..."
           poetry run bandit -r . -f txt || true
-          echo "Security scan completed. Check the logs above for detailed results."
 
   publish:
     needs: [static-analysis, test, security]
@@ -90,15 +118,16 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@${{ env.CHECKOUT_ACTION_VERSION }}
 
       - name: Setup Python and Poetry
         uses: ./.github/actions/setup-python-poetry
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
+          poetry-version: ${{ env.POETRY_VERSION }}
           working-directory: '.'
 
-      - name: Publish to PyPI
+      - name: Publish to CodeArtifact
         uses: ./.github/actions/publish-pypi
         with:
           working-directory: '.'
