@@ -63,6 +63,40 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
-        echo "🚀 Publishing to CodeArtifact..."
-        python -m twine upload --repository codeartifact dist/*
+        set -euo pipefail
+        VERSION=$(poetry version -s)
+        PACKAGE=$(poetry run python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['tool']['poetry']['name'])")
+        echo "Package: ${PACKAGE}@${VERSION}"
+
+        EXISTING=$(aws codeartifact list-package-versions \
+          --domain ${{ inputs.domain }} \
+          --domain-owner ${{ inputs.domain-owner }} \
+          --repository ${{ inputs.repository }} \
+          --format pypi \
+          --package "$PACKAGE" \
+          --region ${{ inputs.aws-region }} \
+          --query "versions[?version=='${VERSION}'].version" \
+          --output text 2>/dev/null || true)
+
+        if [ -n "$EXISTING" ] && [ "$EXISTING" != "None" ]; then
+          echo "✅ ${PACKAGE}@${VERSION} already published to CodeArtifact — skipping upload"
+          exit 0
+        fi
+
+        echo "🚀 Publishing ${PACKAGE}@${VERSION} to CodeArtifact..."
+        set +e
+        UPLOAD_OUT=$(python -m twine upload --repository codeartifact dist/* 2>&1)
+        UPLOAD_RC=$?
+        set -e
+        if [ $UPLOAD_RC -eq 0 ]; then
+          echo "$UPLOAD_OUT"
+          echo "✅ Published successfully"
+        elif echo "$UPLOAD_OUT" | grep -qiE '409|Conflict|already exists'; then
+          echo "$UPLOAD_OUT"
+          echo "✅ Version already published (409) — treating as success"
+          exit 0
+        else
+          echo "$UPLOAD_OUT"
+          exit $UPLOAD_RC
+        fi
 
