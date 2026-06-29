@@ -5,11 +5,8 @@ inputs:
     description: 'Working directory for the action'
     required: false
     default: '.'
-  aws-access-key-id:
-    description: 'AWS access key ID for authentication'
-    required: true
-  aws-secret-access-key:
-    description: 'AWS secret access key for authentication'
+  role-arn:
+    description: 'IAM role ARN (OIDC) with CodeArtifact publish access. Requires the calling job to set permissions.id-token: write.'
     required: true
   aws-region:
     description: 'AWS region for CodeArtifact'
@@ -31,11 +28,11 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
+    - name: Configure AWS credentials (OIDC)
+      uses: aws-actions/configure-aws-credentials@v6
       with:
-        aws-access-key-id: ${{ inputs.aws-access-key-id }}
-        aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
+        role-to-assume: ${{ inputs.role-arn }}
+        role-session-name: gha-sdk-codeartifact-publish
         aws-region: ${{ inputs.aws-region }}
 
     - name: Build package
