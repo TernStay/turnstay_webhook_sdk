@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write  # required for GitHub OIDC -> AWS role assumption
 
 # =============================================================================
 # PROJECT CONFIG — edit only this section when onboarding a new package/service
@@ -131,5 +132,4 @@ jobs:
         uses: ./.github/actions/publish-pypi
         with:
           working-directory: '.'
-          aws-access-key-id: ${{ secrets.PYPI_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.PYPI_AWS_SECRET_ACCESS_KEY }}
+          role-arn: ${{ vars.AWS_CODEARTIFACT_PUBLISH_ROLE_ARN }}
