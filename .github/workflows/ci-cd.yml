@@ -164,7 +164,8 @@ jobs:
         if: steps.resolve.outputs.send == 'true' && env.ENABLE_SLACK_NOTIFY == 'true'
         uses: ./.github/actions/notify-slack
         with:
-          slack-action-version: __SLACK_ACTION_VERSION__
+          slack-bot-token: ${{ secrets.SLACK_BOT_USER_OAUTH_ACCESS_TOKEN }}
+          slack-channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
           kind: sdk-publish
           status: ${{ steps.resolve.outputs.status }}
           name: ${{ env.PACKAGE_DISPLAY_NAME }}

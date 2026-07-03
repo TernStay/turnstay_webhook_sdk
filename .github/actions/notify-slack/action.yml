@@ -2,10 +2,12 @@ name: Notify Slack
 description: Send a standardized deployment or SDK publish notification to #deployments
 
 inputs:
-  slack-action-version:
-    description: Version tag for archive/github-actions-slack
-    required: false
-    default: 'v3.1.0'
+  slack-bot-token:
+    description: Slack bot OAuth token (pass from workflow secrets)
+    required: true
+  slack-channel-id:
+    description: Slack channel ID (pass from workflow secrets)
+    required: true
   kind:
     description: 'deploy-ecs | deploy-static | deploy-infra | deploy-ecr | sdk-publish'
     required: true
@@ -331,9 +333,9 @@ runs:
         } >> "$GITHUB_OUTPUT"
 
     - name: Send Slack notification
-      uses: archive/github-actions-slack@${{ inputs.slack-action-version }}
+      uses: archive/github-actions-slack@v3.1.0
       with:
-        slack-bot-user-oauth-access-token: ${{ secrets.SLACK_BOT_USER_OAUTH_ACCESS_TOKEN }}
-        slack-channel: ${{ secrets.SLACK_CHANNEL_ID }}
+        slack-bot-user-oauth-access-token: ${{ inputs.slack-bot-token }}
+        slack-channel: ${{ inputs.slack-channel-id }}
         slack-text: ${{ steps.message.outputs.text }}
         slack-optional-icon_emoji: ${{ steps.message.outputs.emoji }}
