@@ -32,6 +32,8 @@ env:
   USE_RUFF: 'true'
   USE_FLAKE8: 'false'
   SKIP_BANDIT_IN_STATIC: 'false'
+  SLACK_ACTION_VERSION: 'v3.1.0'
+  ENABLE_SLACK_NOTIFY: 'true'
 
 # =============================================================================
 # STANDARD PIPELINE — do not edit per repo
@@ -117,6 +119,11 @@ jobs:
     needs: [static-analysis, test, security]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    outputs:
+      package: ${{ steps.publish.outputs.package }}
+      version: ${{ steps.publish.outputs.version }}
+      previous-version: ${{ steps.publish.outputs.previous-version }}
+      published: ${{ steps.publish.outputs.published }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -129,7 +136,41 @@ jobs:
           working-directory: '.'
 
       - name: Publish to CodeArtifact
+        id: publish
         uses: ./.github/actions/publish-pypi
         with:
           working-directory: '.'
           role-arn: ${{ vars.AWS_CODEARTIFACT_PUBLISH_ROLE_ARN }}
+
+  notify-slack:
+    name: Notify Slack
+    needs: [static-analysis, test, security, publish]
+    if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve notification
+        id: resolve
+        uses: ./.github/actions/resolve-notification
+        with:
+          needs-json: ${{ toJSON(needs) }}
+          kind: sdk-publish
+          enable-deploy: 'false'
+          publish-job: publish
+          published: ${{ needs.publish.outputs.published || 'false' }}
+
+      - name: Send Slack notification
+        if: steps.resolve.outputs.send == 'true' && env.ENABLE_SLACK_NOTIFY == 'true'
+        uses: ./.github/actions/notify-slack
+        with:
+          slack-action-version: __SLACK_ACTION_VERSION__
+          kind: sdk-publish
+          status: ${{ steps.resolve.outputs.status }}
+          name: ${{ env.PACKAGE_DISPLAY_NAME }}
+          package: ${{ needs.publish.outputs.package }}
+          version: ${{ needs.publish.outputs.version }}
+          previous-version: ${{ needs.publish.outputs.previous-version }}
+          trigger: merge to main
+          failed-jobs: ${{ steps.resolve.outputs.failed-jobs }}
+          registry-url: AWS CodeArtifact (ternstay00)

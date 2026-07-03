@@ -1,0 +1,339 @@
+name: Notify Slack
+description: Send a standardized deployment or SDK publish notification to #deployments
+
+inputs:
+  slack-action-version:
+    description: Version tag for archive/github-actions-slack
+    required: false
+    default: 'v3.1.0'
+  kind:
+    description: 'deploy-ecs | deploy-static | deploy-infra | deploy-ecr | sdk-publish'
+    required: true
+  status:
+    description: 'success | failure'
+    required: true
+  environment:
+    description: 'staging | production'
+    required: false
+    default: 'staging'
+  name:
+    description: Service or package display name
+    required: true
+  trigger:
+    description: Human-readable trigger description
+    required: false
+    default: 'merge to main'
+  branch:
+    description: Branch name (optional override)
+    required: false
+    default: ''
+  failed-jobs:
+    description: Comma-separated failed job names
+    required: false
+    default: ''
+  error-summary:
+    description: Optional error excerpt
+    required: false
+    default: ''
+  service-url:
+    description: Service or site URL
+    required: false
+    default: ''
+  cloudwatch-url:
+    description: CloudWatch logs URL (ECS)
+    required: false
+    default: ''
+  ecs-url:
+    description: ECS console URL
+    required: false
+    default: ''
+  pulumi-stack:
+    description: Pulumi stack name (infra/static)
+    required: false
+    default: ''
+  site-url:
+    description: Static site URL
+    required: false
+    default: ''
+  package:
+    description: SDK package name
+    required: false
+    default: ''
+  version:
+    description: SDK version published
+    required: false
+    default: ''
+  previous-version:
+    description: Previous SDK version in registry
+    required: false
+    default: ''
+  registry-url:
+    description: CodeArtifact or ECR registry URL
+    required: false
+    default: ''
+  image-name:
+    description: ECR image name
+    required: false
+    default: ''
+  image-tag:
+    description: ECR image tag
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Build Slack message
+      id: message
+      shell: bash
+      env:
+        KIND: ${{ inputs.kind }}
+        STATUS: ${{ inputs.status }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        NAME: ${{ inputs.name }}
+        TRIGGER: ${{ inputs.trigger }}
+        BRANCH: ${{ inputs.branch }}
+        FAILED_JOBS: ${{ inputs.failed-jobs }}
+        ERROR_SUMMARY: ${{ inputs.error-summary }}
+        SERVICE_URL: ${{ inputs.service-url }}
+        CLOUDWATCH_URL: ${{ inputs.cloudwatch-url }}
+        ECS_URL: ${{ inputs.ecs-url }}
+        PULUMI_STACK: ${{ inputs.pulumi-stack }}
+        SITE_URL: ${{ inputs.site-url }}
+        PACKAGE: ${{ inputs.package }}
+        VERSION: ${{ inputs.version }}
+        PREVIOUS_VERSION: ${{ inputs.previous-version }}
+        REGISTRY_URL: ${{ inputs.registry-url }}
+        IMAGE_NAME: ${{ inputs.image-name }}
+        IMAGE_TAG: ${{ inputs.image-tag }}
+        GITHUB_SHA: ${{ github.sha }}
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+      run: |
+        set -euo pipefail
+        SHORT_SHA="${GITHUB_SHA:0:7}"
+        COMMIT_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+        RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+        BRANCH_NAME="${BRANCH:-$GITHUB_REF_NAME}"
+
+        build_error_block() {
+          if [ -n "$ERROR_SUMMARY" ]; then
+            printf '*Error summary:*\n'
+            while IFS= read -r line; do
+              [ -n "$line" ] && printf '> %s\n' "$line"
+            done <<< "$ERROR_SUMMARY"
+            printf '\n'
+          fi
+        }
+
+        MSG=""
+        EMOJI=":rocket:"
+
+        case "$KIND" in
+          sdk-publish)
+            if [ "$STATUS" = "success" ]; then
+              EMOJI=":package:"
+              VERSION_LINE="$VERSION"
+              if [ -n "$PREVIOUS_VERSION" ] && [ "$PREVIOUS_VERSION" != "$VERSION" ]; then
+                VERSION_LINE="${PREVIOUS_VERSION} → ${VERSION}"
+              fi
+              MSG=$(cat <<EOF
+        📦 *SDK Published*
+
+        *Package:* ${PACKAGE:-$NAME}
+        *Version:* ${VERSION_LINE}
+        *Registry:* ${REGISTRY_URL:-AWS CodeArtifact (ternstay00)}
+        *Trigger:* ${TRIGGER}
+        *Actor:* ${GITHUB_ACTOR}
+        *Commit:* <${COMMIT_URL}|${SHORT_SHA}>
+        *Run:* <${RUN_URL}|View workflow>
+
+        *Install:* \`poetry add ${PACKAGE:-$NAME}@${VERSION}\` (via CodeArtifact)
+        EOF
+              )
+            else
+              EMOJI=":x:"
+              MSG=$(cat <<EOF
+        ❌ *SDK Publish Failed*
+
+        *Package:* ${PACKAGE:-$NAME}
+        *Attempted version:* ${VERSION:-unknown}
+        *Trigger:* ${TRIGGER}
+        *Actor:* ${GITHUB_ACTOR}
+        *Commit:* <${COMMIT_URL}|${SHORT_SHA}>
+        *Run:* <${RUN_URL}|View workflow>
+        EOF
+              )
+              if [ -n "$FAILED_JOBS" ]; then
+                MSG="${MSG}"$'\n'"*Failed job(s):* ${FAILED_JOBS}"
+              fi
+              MSG="${MSG}"$'\n\n'"$(build_error_block)"
+            fi
+            ;;
+          deploy-ecr)
+            if [ "$STATUS" = "success" ]; then
+              EMOJI=":whale:"
+              MSG=$(cat <<EOF
+        🐳 *Base Image Pushed*
+
+        *Image:* ${IMAGE_NAME}
+        *Tag:* ${IMAGE_TAG:-$SHORT_SHA}
+        *Registry:* ${REGISTRY_URL}
+        *Trigger:* ${TRIGGER}
+        *Actor:* ${GITHUB_ACTOR}
+        *Commit:* <${COMMIT_URL}|${SHORT_SHA}>
+        *Run:* <${RUN_URL}|View workflow>
+        EOF
+              )
+            else
+              EMOJI=":x:"
+              MSG=$(cat <<EOF
+        ❌ *Base Image Push Failed*
+
+        *Image:* ${IMAGE_NAME}
+        *Trigger:* ${TRIGGER}
+        *Actor:* ${GITHUB_ACTOR}
+        *Commit:* <${COMMIT_URL}|${SHORT_SHA}>
+        *Run:* <${RUN_URL}|View workflow>
+        EOF
+              )
+              if [ -n "$FAILED_JOBS" ]; then
+                MSG="${MSG}"$'\n'"*Failed job(s):* ${FAILED_JOBS}"
+              fi
+              MSG="${MSG}"$'\n\n'"$(build_error_block)"
+            fi
+            ;;
+          deploy-static|deploy-infra)
+            ENV_LABEL="$(echo "$ENVIRONMENT" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+            if [ "$STATUS" = "success" ]; then
+              EMOJI=":rocket:"
+              MSG=$(cat <<EOF
+        🚀 *Deployment Successful*
+
+        *Service:* ${NAME}
+        *Environment:* ${ENV_LABEL}
+        *Trigger:* ${TRIGGER}
+        *Actor:* ${GITHUB_ACTOR}
+        *Commit:* <${COMMIT_URL}|${SHORT_SHA}>
+        *Run:* <${RUN_URL}|View workflow>
+        EOF
+              )
+              if [ -n "$PULUMI_STACK" ]; then
+                MSG="${MSG}"$'\n'"*Pulumi stack:* ${PULUMI_STACK}"
+              fi
+              if [ -n "$SITE_URL" ]; then
+                MSG="${MSG}"$'\n'"*Site URL:* ${SITE_URL}"
+              fi
+              MSG="${MSG}"$'\n\n'"✅ *Status:* All checks passed!"
+            else
+              EMOJI=":x:"
+              MSG=$(cat <<EOF
+        ❌ *Deployment Failed*
+
+        *Service:* ${NAME}
+        *Environment:* ${ENV_LABEL}
+        *Trigger:* ${TRIGGER}
+        *Actor:* ${GITHUB_ACTOR}
+        *Commit:* <${COMMIT_URL}|${SHORT_SHA}>
+        *Run:* <${RUN_URL}|View workflow>
+        EOF
+              )
+              if [ -n "$FAILED_JOBS" ]; then
+                MSG="${MSG}"$'\n'"*Failed job(s):* ${FAILED_JOBS}"
+              fi
+              if [ -n "$PULUMI_STACK" ]; then
+                MSG="${MSG}"$'\n'"*Pulumi stack:* ${PULUMI_STACK}"
+              fi
+              MSG="${MSG}"$'\n\n'"$(build_error_block)"
+            fi
+            ;;
+          *)
+            ENV_LABEL="$(echo "$ENVIRONMENT" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+            if [ "$STATUS" = "success" ]; then
+              if [ "$ENVIRONMENT" = "production" ]; then
+                EMOJI=":tada:"
+                HEADER="🎉 *Production Deployment Successful*"
+                FOOTER="🚀 *Status:* Live in production!"
+              else
+                EMOJI=":rocket:"
+                HEADER="🚀 *Deployment Successful*"
+                FOOTER="✅ *Status:* All checks passed!"
+              fi
+              MSG=$(cat <<EOF
+        ${HEADER}
+
+        *Service:* ${NAME}
+        *Environment:* ${ENV_LABEL}
+        *Branch:* ${BRANCH_NAME}
+        *Trigger:* ${TRIGGER}
+        *Actor:* ${GITHUB_ACTOR}
+        *Commit:* <${COMMIT_URL}|${SHORT_SHA}>
+        *Run:* <${RUN_URL}|View workflow>
+        EOF
+              )
+              if [ -n "$SERVICE_URL" ]; then
+                MSG="${MSG}"$'\n'"*Service URL:* ${SERVICE_URL}"
+              fi
+              if [ -n "$CLOUDWATCH_URL" ]; then
+                MSG="${MSG}"$'\n'"*CloudWatch:* ${CLOUDWATCH_URL}"
+              fi
+              if [ -n "$ECS_URL" ]; then
+                MSG="${MSG}"$'\n'"*ECS:* ${ECS_URL}"
+              fi
+              MSG="${MSG}"$'\n\n'"${FOOTER}"
+            else
+              if [ "$ENVIRONMENT" = "production" ]; then
+                EMOJI=":rotating_light:"
+                HEADER="🚨 *PRODUCTION DEPLOYMENT FAILED*"
+                FOOTER="🚨 *Status:* CRITICAL — production deployment failed!"
+              else
+                EMOJI=":x:"
+                HEADER="❌ *Deployment Failed*"
+                FOOTER="⚠️ *Status:* Deployment failed — immediate attention needed!"
+              fi
+              MSG=$(cat <<EOF
+        ${HEADER}
+
+        *Service:* ${NAME}
+        *Environment:* ${ENV_LABEL}
+        *Branch:* ${BRANCH_NAME}
+        *Trigger:* ${TRIGGER}
+        *Actor:* ${GITHUB_ACTOR}
+        *Commit:* <${COMMIT_URL}|${SHORT_SHA}>
+        *Run:* <${RUN_URL}|View workflow>
+        EOF
+              )
+              if [ -n "$FAILED_JOBS" ]; then
+                MSG="${MSG}"$'\n'"*Failed job(s):* ${FAILED_JOBS}"
+              fi
+              if [ -n "$SERVICE_URL" ]; then
+                MSG="${MSG}"$'\n'"*Service URL:* ${SERVICE_URL}"
+              fi
+              if [ -n "$CLOUDWATCH_URL" ]; then
+                MSG="${MSG}"$'\n'"*CloudWatch:* ${CLOUDWATCH_URL}"
+              fi
+              if [ -n "$ECS_URL" ]; then
+                MSG="${MSG}"$'\n'"*ECS:* ${ECS_URL}"
+              fi
+              MSG="${MSG}"$'\n\n'"$(build_error_block)"$'\n'"${FOOTER}"
+            fi
+            ;;
+        esac
+
+        {
+          echo 'text<<EOF'
+          echo "$MSG"
+          echo 'EOF'
+          echo "emoji=$EMOJI"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Send Slack notification
+      uses: archive/github-actions-slack@${{ inputs.slack-action-version }}
+      with:
+        slack-bot-user-oauth-access-token: ${{ secrets.SLACK_BOT_USER_OAUTH_ACCESS_TOKEN }}
+        slack-channel: ${{ secrets.SLACK_CHANNEL_ID }}
+        slack-text: ${{ steps.message.outputs.text }}
+        slack-optional-icon_emoji: ${{ steps.message.outputs.emoji }}

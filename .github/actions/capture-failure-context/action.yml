@@ -1,0 +1,46 @@
+name: Capture failure context
+description: Extract a concise error summary from a CI log file for Slack notifications
+
+inputs:
+  log-file:
+    description: Path to the log file to scan
+    required: true
+  output-file:
+    description: Path to write the error summary (defaults to RUNNER_TEMP/error-summary.txt)
+    required: false
+    default: ''
+  max-lines:
+    description: Maximum number of error lines to include
+    required: false
+    default: '12'
+
+runs:
+  using: composite
+  steps:
+    - name: Extract error summary
+      shell: bash
+      run: |
+        set -euo pipefail
+        LOG="${{ inputs.log-file }}"
+        OUT="${{ inputs.output-file }}"
+        if [ -z "$OUT" ]; then
+          OUT="${RUNNER_TEMP}/error-summary.txt"
+        fi
+        MAX="${{ inputs.max-lines }}"
+
+        if [ ! -f "$LOG" ]; then
+          echo "No log file at $LOG — skipping capture"
+          exit 0
+        fi
+
+        {
+          grep -iE 'error:|failed|failure|diagnostics:|InvalidParameter|AccessDenied|exit code|Traceback' "$LOG" || true
+        } | tail -n "$MAX" | sed 's/^[[:space:]]*//' > "$OUT" || true
+
+        if [ ! -s "$OUT" ]; then
+          tail -n "$MAX" "$LOG" > "$OUT" || true
+        fi
+
+        echo "Captured $(wc -l < "$OUT" | tr -d ' ') line(s) to $OUT"
+        echo "--- error summary ---"
+        cat "$OUT"
