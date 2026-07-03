@@ -25,6 +25,20 @@ inputs:
     required: false
     default: 'ternstay00'
 
+outputs:
+  package:
+    description: Package name
+    value: ${{ steps.publish.outputs.package }}
+  version:
+    description: Version from pyproject.toml
+    value: ${{ steps.publish.outputs.version }}
+  previous-version:
+    description: Latest version in CodeArtifact before publish (if any)
+    value: ${{ steps.publish.outputs.previous-version }}
+  published:
+    description: 'true if a new version was uploaded, skipped if already existed'
+    value: ${{ steps.publish.outputs.published }}
+
 runs:
   using: 'composite'
   steps:
@@ -57,6 +71,7 @@ runs:
         aws codeartifact login --tool twine --domain ${{ inputs.domain }} --domain-owner ${{ inputs.domain-owner }} --repository ${{ inputs.repository }} --region ${{ inputs.aws-region }}
 
     - name: Publish to CodeArtifact
+      id: publish
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
@@ -64,6 +79,27 @@ runs:
         VERSION=$(poetry version -s)
         PACKAGE=$(poetry run python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['tool']['poetry']['name'])")
         echo "Package: ${PACKAGE}@${VERSION}"
+
+        PREVIOUS=$(aws codeartifact list-package-versions \
+          --domain ${{ inputs.domain }} \
+          --domain-owner ${{ inputs.domain-owner }} \
+          --repository ${{ inputs.repository }} \
+          --format pypi \
+          --package "$PACKAGE" \
+          --region ${{ inputs.aws-region }} \
+          --sort-by PUBLISH_TIME \
+          --max-results 1 \
+          --query 'versions[0].version' \
+          --output text 2>/dev/null || true)
+        if [ "$PREVIOUS" = "None" ] || [ -z "$PREVIOUS" ]; then
+          PREVIOUS=""
+        fi
+
+        {
+          echo "package=${PACKAGE}"
+          echo "version=${VERSION}"
+          echo "previous-version=${PREVIOUS}"
+        } >> "$GITHUB_OUTPUT"
 
         EXISTING=$(aws codeartifact list-package-versions \
           --domain ${{ inputs.domain }} \
@@ -77,6 +113,7 @@ runs:
 
         if [ -n "$EXISTING" ] && [ "$EXISTING" != "None" ]; then
           echo "✅ ${PACKAGE}@${VERSION} already published to CodeArtifact — skipping upload"
+          echo "published=skipped" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
@@ -88,12 +125,15 @@ runs:
         if [ $UPLOAD_RC -eq 0 ]; then
           echo "$UPLOAD_OUT"
           echo "✅ Published successfully"
+          echo "published=true" >> "$GITHUB_OUTPUT"
         elif echo "$UPLOAD_OUT" | grep -qiE '409|Conflict|already exists'; then
           echo "$UPLOAD_OUT"
           echo "✅ Version already published (409) — treating as success"
+          echo "published=skipped" >> "$GITHUB_OUTPUT"
           exit 0
         else
           echo "$UPLOAD_OUT"
+          echo "published=false" >> "$GITHUB_OUTPUT"
           exit $UPLOAD_RC
         fi
 

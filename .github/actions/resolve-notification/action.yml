@@ -1,0 +1,99 @@
+name: Resolve notification
+description: Decide whether to send Slack and derive status from workflow job results
+
+inputs:
+  needs-json:
+    description: JSON blob from toJSON(needs)
+    required: true
+  kind:
+    description: Notification kind (deploy-ecs, deploy-static, deploy-infra, deploy-ecr, sdk-publish)
+    required: true
+  enable-deploy:
+    description: Whether this repo deploys to AWS (ENABLE_AWS_DEPLOY)
+    required: false
+    default: 'true'
+  deploy-job:
+    description: Job id that performs deployment/publish
+    required: false
+    default: 'deploy-staging'
+  publish-job:
+    description: Job id for SDK publish (sdk-publish kind)
+    required: false
+    default: 'publish'
+  published:
+    description: Whether SDK publish uploaded a new version (true/false/skipped)
+    required: false
+    default: ''
+
+outputs:
+  send:
+    description: Whether notify-slack should run
+    value: ${{ steps.resolve.outputs.send }}
+  status:
+    description: success or failure
+    value: ${{ steps.resolve.outputs.status }}
+  failed-jobs:
+    description: Comma-separated list of failed job names
+    value: ${{ steps.resolve.outputs.failed-jobs }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve notification
+      id: resolve
+      shell: bash
+      env:
+        NEEDS_JSON: ${{ inputs.needs-json }}
+        KIND: ${{ inputs.kind }}
+        ENABLE_DEPLOY: ${{ inputs.enable-deploy }}
+        DEPLOY_JOB: ${{ inputs.deploy-job }}
+        PUBLISH_JOB: ${{ inputs.publish-job }}
+        PUBLISHED: ${{ inputs.published }}
+      run: |
+        set -euo pipefail
+        python3 <<'PY'
+        import json, os, sys
+
+        needs = json.loads(os.environ["NEEDS_JSON"])
+        kind = os.environ["KIND"]
+        enable_deploy = os.environ.get("ENABLE_DEPLOY", "true") == "true"
+        deploy_job = os.environ.get("DEPLOY_JOB", "deploy-staging")
+        publish_job = os.environ.get("PUBLISH_JOB", "publish")
+        published = os.environ.get("PUBLISHED", "")
+
+        failed = []
+        for job_id, meta in needs.items():
+            result = meta.get("result")
+            if result == "failure":
+                name = meta.get("name") or job_id
+                failed.append(name)
+
+        status = "failure" if failed else "success"
+        send = "false"
+
+        if kind == "sdk-publish":
+            if failed:
+                send = "true"
+            elif published == "true":
+                send = "true"
+            # skipped publish (version exists) and all green → no notification
+        elif kind in ("deploy-ecs", "deploy-static", "deploy-infra", "deploy-ecr"):
+            if failed:
+                send = "true"
+            elif enable_deploy and status == "success":
+                deploy_result = needs.get(deploy_job, {}).get("result")
+                if deploy_result == "success":
+                    send = "true"
+            elif not enable_deploy and failed:
+                send = "true"
+            elif not enable_deploy and status == "success":
+                send = "false"
+        else:
+            send = "true" if failed or status == "success" else "false"
+
+        out = os.environ["GITHUB_OUTPUT"]
+        with open(out, "a") as fh:
+            fh.write(f"send={send}\n")
+            fh.write(f"status={status}\n")
+            fh.write(f"failed-jobs={', '.join(failed)}\n")
+        PY
