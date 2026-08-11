@@ -1,0 +1,195 @@
+# =============================================================================
+# STANDARD PIPELINE — SDK CI (GitLab)
+# Do not edit per repo. PROJECT CONFIG lives in the root .gitlab-ci.yml.
+# Flow: lint → test (3.10/3.11) + bandit → publish on default branch → slack
+# =============================================================================
+
+include:
+  - local: ".gitlab/ci/_helpers.gitlab-ci.yml"
+
+stages:
+  - quality
+  - publish
+  - notify
+
+default:
+  image: python:${PYTHON_VERSION}-bookworm
+  interruptible: true
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+variables:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  POETRY_VIRTUALENVS_IN_PROJECT: "true"
+  FF_USE_FASTZIP: "true"
+  CODEARTIFACT_DOMAIN: "ternstay"
+  CODEARTIFACT_DOMAIN_OWNER: "697839196252"
+  CODEARTIFACT_REPOSITORY: "ternstay00"
+
+# ---------------------------------------------------------------------------
+# Quality
+# ---------------------------------------------------------------------------
+lint:
+  extends:
+    - .setup_python_poetry
+    - .aws_oidc_token
+    - .rules_quality
+  stage: quality
+  script:
+    - |
+      set -euo pipefail
+      # shellcheck disable=SC1091
+      source "${CI_PROJECT_DIR}/.gitlab/ci/scripts/aws_auth.sh"
+      chmod +x "${CI_PROJECT_DIR}/.gitlab/ci/scripts/"*.sh
+      if [ -n "${AWS_CODEARTIFACT_ROLE_ARN:-}" ]; then
+        aws_auth_assume "${AWS_CODEARTIFACT_ROLE_ARN}" "gitlab-${PACKAGE_DISPLAY_NAME}-codeartifact"
+        mint_codeartifact_token
+        bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/configure_codeartifact.sh"
+      fi
+      poetry install --with dev
+      if [ "${USE_RUFF:-true}" = "true" ]; then
+        poetry run ruff check . --no-fix
+        poetry run ruff format --check .
+      fi
+      if [ "${USE_FLAKE8:-false}" = "true" ]; then
+        poetry run flake8 .
+      fi
+  artifacts:
+    paths:
+      - .venv/
+    expire_in: 6 hours
+  cache:
+    key:
+      files:
+        - poetry.lock
+      prefix: "sdk-venv-${PYTHON_VERSION}"
+    paths:
+      - .venv/
+      - .cache/pypoetry/
+
+test:
+  extends:
+    - .setup_python_poetry
+    - .aws_oidc_token
+    - .rules_quality
+  stage: quality
+  needs: ["lint"]
+  parallel:
+    matrix:
+      - PYTHON_VERSION: ["3.10", "3.11"]
+  script:
+    - |
+      set -euo pipefail
+      # shellcheck disable=SC1091
+      source "${CI_PROJECT_DIR}/.gitlab/ci/scripts/aws_auth.sh"
+      chmod +x "${CI_PROJECT_DIR}/.gitlab/ci/scripts/"*.sh
+      # Prefer read role; fall back to publish role for private deps.
+      ROLE="${AWS_CODEARTIFACT_ROLE_ARN:-${AWS_CODEARTIFACT_PUBLISH_ROLE_ARN:-}}"
+      if [ -n "$ROLE" ]; then
+        aws_auth_assume "$ROLE" "gitlab-${PACKAGE_DISPLAY_NAME}-test"
+        mint_codeartifact_token
+        bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/configure_codeartifact.sh"
+      fi
+      rm -rf .venv
+      poetry install --with dev
+      poetry run pytest tests/ -v \
+        --cov="${COVERAGE_PACKAGE}" \
+        --cov-report=term-missing \
+        --cov-report=html
+  artifacts:
+    when: always
+    paths:
+      - htmlcov/
+    expire_in: 7 days
+
+bandit:
+  extends:
+    - .setup_python_poetry
+    - .aws_oidc_token
+    - .rules_quality
+  stage: quality
+  needs: ["lint"]
+  allow_failure: true
+  script:
+    - |
+      set -euo pipefail
+      if [ "${SKIP_BANDIT_IN_STATIC:-false}" = "true" ]; then
+        echo "Bandit skipped"
+        exit 0
+      fi
+      # shellcheck disable=SC1091
+      source "${CI_PROJECT_DIR}/.gitlab/ci/scripts/aws_auth.sh"
+      chmod +x "${CI_PROJECT_DIR}/.gitlab/ci/scripts/"*.sh
+      ROLE="${AWS_CODEARTIFACT_ROLE_ARN:-${AWS_CODEARTIFACT_PUBLISH_ROLE_ARN:-}}"
+      if [ -n "$ROLE" ]; then
+        aws_auth_assume "$ROLE" "gitlab-${PACKAGE_DISPLAY_NAME}-bandit"
+        mint_codeartifact_token
+        bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/configure_codeartifact.sh"
+      fi
+      poetry install --with dev
+      poetry run bandit -r . -f txt || true
+
+# ---------------------------------------------------------------------------
+# Publish (default branch only)
+# ---------------------------------------------------------------------------
+publish:
+  extends:
+    - .setup_python_poetry
+    - .aws_oidc_token
+    - .rules_publish
+  stage: publish
+  needs: ["lint", "test", "bandit"]
+  script:
+    - |
+      set -euo pipefail
+      # shellcheck disable=SC1091
+      source "${CI_PROJECT_DIR}/.gitlab/ci/scripts/aws_auth.sh"
+      chmod +x "${CI_PROJECT_DIR}/.gitlab/ci/scripts/"*.sh
+      aws_auth_assume "${AWS_CODEARTIFACT_PUBLISH_ROLE_ARN}" "gitlab-${PACKAGE_DISPLAY_NAME}-publish"
+      poetry install --with dev
+      bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/publish_codeartifact.sh"
+  artifacts:
+    reports:
+      dotenv: sdk-publish.env
+    expire_in: 1 day
+
+# ---------------------------------------------------------------------------
+# Slack notify on default branch
+# ---------------------------------------------------------------------------
+notify-slack:
+  stage: notify
+  image: curlimages/curl:8.5.0
+  needs:
+    - job: lint
+      optional: true
+    - job: test
+      optional: true
+    - job: bandit
+      optional: true
+    - job: publish
+      optional: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $ENABLE_SLACK_NOTIFY == "true" && $SLACK_BOT_USER_OAUTH_ACCESS_TOKEN && $SLACK_CHANNEL_ID
+  script:
+    - |
+      set -euo pipefail
+      STATUS="success"
+      if [ "${CI_JOB_STATUS:-}" = "failed" ] || [ "${LINT_STATUS:-}" = "failed" ]; then
+        STATUS="failure"
+      fi
+      # Derive from dependency job results via pipeline status heuristic
+      TEXT=":package: *${PACKAGE_DISPLAY_NAME}* SDK pipeline on \`${CI_COMMIT_BRANCH}\`"
+      if [ -n "${SDK_PACKAGE:-}" ]; then
+        TEXT="${TEXT}\n• package: \`${SDK_PACKAGE}@${SDK_VERSION:-?}\` (published=${SDK_PUBLISHED:-n/a})"
+      fi
+      TEXT="${TEXT}\n• pipeline: ${CI_PIPELINE_URL}"
+      curl -sS -X POST https://slack.com/api/chat.postMessage \
+        -H "Authorization: Bearer ${SLACK_BOT_USER_OAUTH_ACCESS_TOKEN}" \
+        -H "Content-Type: application/json; charset=utf-8" \
+        -d "$(printf '{"channel":"%s","text":"%s"}' "${SLACK_CHANNEL_ID}" "${TEXT}")" >/dev/null
+      echo "Slack notify sent"
+  allow_failure: true
