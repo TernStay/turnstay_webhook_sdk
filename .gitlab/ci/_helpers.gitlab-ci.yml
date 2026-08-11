@@ -1,0 +1,24 @@
+# Shared anchors for SDK GitLab pipelines.
+
+.aws_oidc_token:
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: https://gitlab.com
+
+.setup_python_poetry:
+  image: python:${PYTHON_VERSION}-bookworm
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl unzip jq awscli >/dev/null
+    - pip install --quiet "poetry==${POETRY_VERSION}" boto3
+    - poetry config virtualenvs.in-project true
+    - poetry --version
+
+.rules_quality:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+.rules_publish:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "merge_request_event" && $AWS_CODEARTIFACT_PUBLISH_ROLE_ARN
