@@ -55,14 +55,14 @@ lint:
       bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/poetry_install.sh"
       if [ "${USE_RUFF:-true}" = "true" ]; then
         # Some SDKs have no dev group / ruff dep — ensure the tool is available.
-        if ! poetry run ruff --version >/dev/null 2>&1; then
-          pip install -q ruff
-          RUFF=(ruff)
+        if poetry run ruff --version >/dev/null 2>&1; then
+          poetry run ruff check . --no-fix
+          poetry run ruff format --check .
         else
-          RUFF=(poetry run ruff)
+          pip install -q ruff
+          ruff check . --no-fix
+          ruff format --check .
         fi
-        "${RUFF[@]}" check . --no-fix
-        "${RUFF[@]}" format --check .
       fi
       if [ "${USE_FLAKE8:-false}" = "true" ]; then
         poetry run flake8 .
@@ -166,11 +166,11 @@ publish:
     expire_in: 1 day
 
 # ---------------------------------------------------------------------------
-# Slack notify on default branch
+# Slack notify on default branch — parity with GitHub notify-slack action
 # ---------------------------------------------------------------------------
 notify-slack:
   stage: notify
-  image: curlimages/curl:8.5.0
+  image: python:3.11-bookworm
   needs:
     - job: lint
       optional: true
@@ -180,19 +180,27 @@ notify-slack:
       optional: true
     - job: publish
       optional: true
+      artifacts: true
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $ENABLE_SLACK_NOTIFY == "true" && $SLACK_BOT_USER_OAUTH_ACCESS_TOKEN && $SLACK_CHANNEL_ID
+  when: always
+  allow_failure: true
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl >/dev/null
   script:
     - |
       set -euo pipefail
-      TEXT=":package: *${PACKAGE_DISPLAY_NAME}* SDK pipeline on \`${CI_COMMIT_BRANCH}\`"
-      if [ -n "${SDK_PACKAGE:-}" ]; then
-        TEXT="${TEXT}\n• package: \`${SDK_PACKAGE}@${SDK_VERSION:-?}\` (published=${SDK_PUBLISHED:-n/a})"
+      chmod +x "${CI_PROJECT_DIR}/.gitlab/ci/scripts/notify_slack.sh"
+      # Dotenv from publish job (when present): SDK_PACKAGE / SDK_VERSION / …
+      if [ -f sdk-publish.env ]; then
+        # shellcheck disable=SC1091
+        set -a && source sdk-publish.env && set +a
       fi
-      TEXT="${TEXT}\n• pipeline: ${CI_PIPELINE_URL}"
-      curl -sS -X POST https://slack.com/api/chat.postMessage \
-        -H "Authorization: Bearer ${SLACK_BOT_USER_OAUTH_ACCESS_TOKEN}" \
-        -H "Content-Type: application/json; charset=utf-8" \
-        -d "$(printf '{"channel":"%s","text":"%s"}' "${SLACK_CHANNEL_ID}" "${TEXT}")" >/dev/null
-      echo "Slack notify sent"
-  allow_failure: true
+      export KIND="sdk-publish"
+      export NAME="${PACKAGE_DISPLAY_NAME}"
+      export PACKAGE="${SDK_PACKAGE:-${PACKAGE_DISPLAY_NAME}}"
+      export VERSION="${SDK_VERSION:-}"
+      export PREVIOUS_VERSION="${SDK_PREVIOUS_VERSION:-}"
+      export PUBLISHED="${SDK_PUBLISHED:-}"
+      export TRIGGER="merge to main"
+      bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/notify_slack.sh"
