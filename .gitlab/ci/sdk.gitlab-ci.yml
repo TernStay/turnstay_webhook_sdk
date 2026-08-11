@@ -45,12 +45,14 @@ lint:
       # shellcheck disable=SC1091
       source "${CI_PROJECT_DIR}/.gitlab/ci/scripts/aws_auth.sh"
       chmod +x "${CI_PROJECT_DIR}/.gitlab/ci/scripts/"*.sh
-      if [ -n "${AWS_CODEARTIFACT_ROLE_ARN:-}" ]; then
-        aws_auth_assume "${AWS_CODEARTIFACT_ROLE_ARN}" "gitlab-${PACKAGE_DISPLAY_NAME}-codeartifact"
+      # Prefer read role; fall back to publish role for private deps.
+      ROLE="${AWS_CODEARTIFACT_ROLE_ARN:-${AWS_CODEARTIFACT_PUBLISH_ROLE_ARN:-}}"
+      if [ -n "$ROLE" ]; then
+        aws_auth_assume "$ROLE" "gitlab-${PACKAGE_DISPLAY_NAME}-codeartifact"
         mint_codeartifact_token
         bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/configure_codeartifact.sh"
       fi
-      poetry install --with dev
+      bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/poetry_install.sh"
       if [ "${USE_RUFF:-true}" = "true" ]; then
         poetry run ruff check . --no-fix
         poetry run ruff format --check .
@@ -87,7 +89,6 @@ test:
       # shellcheck disable=SC1091
       source "${CI_PROJECT_DIR}/.gitlab/ci/scripts/aws_auth.sh"
       chmod +x "${CI_PROJECT_DIR}/.gitlab/ci/scripts/"*.sh
-      # Prefer read role; fall back to publish role for private deps.
       ROLE="${AWS_CODEARTIFACT_ROLE_ARN:-${AWS_CODEARTIFACT_PUBLISH_ROLE_ARN:-}}"
       if [ -n "$ROLE" ]; then
         aws_auth_assume "$ROLE" "gitlab-${PACKAGE_DISPLAY_NAME}-test"
@@ -95,7 +96,7 @@ test:
         bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/configure_codeartifact.sh"
       fi
       rm -rf .venv
-      poetry install --with dev
+      bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/poetry_install.sh"
       poetry run pytest tests/ -v \
         --cov="${COVERAGE_PACKAGE}" \
         --cov-report=term-missing \
@@ -130,7 +131,7 @@ bandit:
         mint_codeartifact_token
         bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/configure_codeartifact.sh"
       fi
-      poetry install --with dev
+      bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/poetry_install.sh"
       poetry run bandit -r . -f txt || true
 
 # ---------------------------------------------------------------------------
@@ -150,7 +151,7 @@ publish:
       source "${CI_PROJECT_DIR}/.gitlab/ci/scripts/aws_auth.sh"
       chmod +x "${CI_PROJECT_DIR}/.gitlab/ci/scripts/"*.sh
       aws_auth_assume "${AWS_CODEARTIFACT_PUBLISH_ROLE_ARN}" "gitlab-${PACKAGE_DISPLAY_NAME}-publish"
-      poetry install --with dev
+      bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/poetry_install.sh"
       bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/publish_codeartifact.sh"
   artifacts:
     reports:
@@ -177,11 +178,6 @@ notify-slack:
   script:
     - |
       set -euo pipefail
-      STATUS="success"
-      if [ "${CI_JOB_STATUS:-}" = "failed" ] || [ "${LINT_STATUS:-}" = "failed" ]; then
-        STATUS="failure"
-      fi
-      # Derive from dependency job results via pipeline status heuristic
       TEXT=":package: *${PACKAGE_DISPLAY_NAME}* SDK pipeline on \`${CI_COMMIT_BRANCH}\`"
       if [ -n "${SDK_PACKAGE:-}" ]; then
         TEXT="${TEXT}\n• package: \`${SDK_PACKAGE}@${SDK_VERSION:-?}\` (published=${SDK_PUBLISHED:-n/a})"
