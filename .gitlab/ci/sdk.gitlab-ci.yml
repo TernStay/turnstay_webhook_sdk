@@ -54,8 +54,15 @@ lint:
       fi
       bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/poetry_install.sh"
       if [ "${USE_RUFF:-true}" = "true" ]; then
-        poetry run ruff check . --no-fix
-        poetry run ruff format --check .
+        # Some SDKs have no dev group / ruff dep — ensure the tool is available.
+        if ! poetry run ruff --version >/dev/null 2>&1; then
+          pip install -q ruff
+          RUFF=(ruff)
+        else
+          RUFF=(poetry run ruff)
+        fi
+        "${RUFF[@]}" check . --no-fix
+        "${RUFF[@]}" format --check .
       fi
       if [ "${USE_FLAKE8:-false}" = "true" ]; then
         poetry run flake8 .
