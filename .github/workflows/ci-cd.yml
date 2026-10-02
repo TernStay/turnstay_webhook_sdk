@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python and Poetry
         uses: ./.github/actions/setup-python-poetry
@@ -69,7 +69,7 @@ jobs:
         python-version: ["3.10", "3.11"]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python and Poetry
         uses: ./.github/actions/setup-python-poetry
@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python and Poetry
         uses: ./.github/actions/setup-python-poetry
@@ -126,7 +126,7 @@ jobs:
       published: ${{ steps.publish.outputs.published }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python and Poetry
         uses: ./.github/actions/setup-python-poetry
@@ -148,7 +148,7 @@ jobs:
     if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Resolve notification
         id: resolve
