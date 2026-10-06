@@ -1,0 +1,30 @@
+# =============================================================================
+# turnstay_webhook_sdk SDK CI/CD Pipeline (GitLab)
+# =============================================================================
+# Flow: lint → test (3.10/3.11) + security → publish to CodeArtifact on main
+#
+# Configuration: PROJECT CONFIG variables below. Do not edit STANDARD PIPELINE
+# includes under .gitlab/ci/.
+# =============================================================================
+
+# =============================================================================
+# PROJECT CONFIG — edit only this section when onboarding a new package/service
+# =============================================================================
+variables:
+  PACKAGE_DISPLAY_NAME: "turnstay_webhook_sdk"
+  COVERAGE_PACKAGE: "turnstay_webhooks"
+  PYTHON_VERSION: "3.11"
+  POETRY_VERSION: "2.1.4"
+  # GitLab OIDC → same gha-* roles as GitHub (dual-trust in infra_base).
+  AWS_AUTH_MODE: "oidc"
+  AWS_PYPI_REGION: "us-east-1"
+  USE_RUFF: "true"
+  USE_FLAKE8: "false"
+  SKIP_BANDIT_IN_STATIC: "false"
+  ENABLE_SLACK_NOTIFY: "true"
+
+# =============================================================================
+# STANDARD PIPELINE — do not edit per repo
+# =============================================================================
+include:
+  - local: ".gitlab/ci/sdk.gitlab-ci.yml"
